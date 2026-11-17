@@ -1,0 +1,137 @@
+# ============================================================
+# LitterGuard — zero-training local littering detection system
+# All thresholds tunable per site. No model training required.
+# ============================================================
+
+source:
+  # video file | webcam index (0) | rtsp://...
+  input: "media/litter1.mp4"
+  proc_fps: 5            # Stage-1 processing rate (a drop unfolds over seconds)
+  litter_fps: 2.5        # litter detectors run at a lower rate (person tracker at proc_fps)
+  extra_fps: 1.0         # extra corroborating detectors run even slower
+  resize_max: 960        # downscale long edge for speed (0 = keep)
+
+models:
+  # All pre-trained, downloaded by tools/download_models.py
+  person: "models/yolo11n.pt"              # COCO: person + vehicles (no training)
+  person_tracker_yaml: "models/bytetrack_lg.yaml"  # low-conf track admission
+  person_conf: 0.2                         # blurred CCTV people fluctuate 0.2-0.6
+  pose: "models/yolo11n-pose.pt"           # optional arm-motion corroboration
+  litter_a: "models/litter-detection-yolov8/best.pt"  # community litter YOLOv8 (TACO-style)
+  litter_b: "models/yolov8s-worldv2.pt"    # zero-shot YOLO-World, custom vocab
+  grounding_dino: "IDEA-Research/grounding-dino-base"  # slow accuracy anchor
+  gd_enable: false               # CPU runs: off (~13s/frame); GPU kernel sets true
+  world_vocab: ["litter", "trash", "garbage bag", "plastic bottle", "bottle",
+                "can", "cup", "cardboard box", "food wrapper", "plastic bag",
+                "trash bag", "styrofoam container",
+                "discarded clothes", "trash on the ground"]
+  # NOTE: no appearance words ("black bag", "bin bag") — they match exactly the
+  # bags people carry, which is MIVIA's main hard-negative class.
+  gd_prompt: "litter . trash . garbage bag . plastic bag . trash bag . rubbish ."
+  gd_box_threshold: 0.25
+  gd_text_threshold: 0.24
+  gd_interval_s: 10.0      # ~13s/inference on CPU — anchor only
+  gd_vote_ttl_s: 45.0      # how long a GD vote stays valid for a location
+  world_conf: 0.24
+  litter_a_conf: 0.30
+  # extra community litter detectors -> additional INDEPENDENT votes (no training)
+  extra_detectors:
+    - "models/extra/waste-detection-yolov8/best.pt"
+    - "models/extra/yolov8s-garbage-detection/best_yolov8s_final.pt"
+    # littercam-yolov9c (410MB, slow on CPU) — enable on GPU or for full runs:
+    # - "models/extra/littercam-yolov9c/best.pt"
+
+person_tracker:
+  track_buffer: 50          # frames a lost track survives (~2s at 25fps)
+  match_thresh: 0.85
+
+logic:
+  # --- Rule (1) new stationary litter ---
+  stationary_min_age_s: 5.0     # litter track must exist this long before firing
+  stationary_window: 15         # centroid jitter window (frames)
+  stationary_sigma_px: 20.0     # max smoothed-centroid std-dev @960px
+                                # (20 = tolerates person-adjacent box jitter; DeepSeek-tuned)
+  fast_chain_age_s: 3.0         # reduced wait when held->release chain is armed
+  flush_min_age_s: 2.0          # relaxed age for end-of-stream evaluation
+  min_litter_area_px: 250       # ignore specks
+  max_litter_area_frac: 0.35    # boxes covering >35% of frame = scene/person blob, reject
+  person_containment_max_iou: 0.45  # litter box overlapping a person box this much = held item/person, reject
+  held_area_frac: 0.35           # item is "held" only if this small vs the person box
+  # --- Rule (2) culprit proximity ---
+  proximity_radius_m: 3.0
+  alert_proximity_m: 1.0     # culprit within 1m => alertable; 1-3m => log-only
+                             # (external-audit recommendation: all verified TPs 0.09-0.54m)
+  lookback_s: 4.0
+  lookahead_s: 1.0
+  person_height_m: 1.7          # auto px/m calibration
+  # --- Rule (3) agreement voting (2-of-3 sources + physical blob) ---
+  require_votes: 2              # of: litter_a, litter_b, grounding_dino
+  strong_area_px: 60000         # huge litter detection counts as its own vote
+  single_vote_area_px: 20000   # 1-detector path: LARGE object + blob + culprit<=0.5m
+  single_vote_proximity_m: 0.5 # tight proximity for the single-vote path
+  blob_ratio_min: 0.12          # fraction of the box that must be static fg
+  require_bg_blob: true         # static foreground blob at same spot (physical proof)
+  blob_require_votes: 2         # blob is a VETO only for single-detector cases;
+                                # 2+ independent detectors agreeing on a persistent
+                                # object is already physical proof
+  bg_min_frames: 25             # blob maturity floor (5s @5fps; short-clip safe)
+  fire_unattributed: true       # object appeared+settled but no culprit -> REVIEW-ONLY
+  attended_radius_m: 1.5         # a person standing next to it = handled, not litter
+  departure_with_m: 1.5          # a person must be this close to count as "with the item"
+  require_item_motion_test: true  # carried object travels WITH the person -> not littering
+  carried_motion_ratio: 0.5      # item displacement / person displacement above this = carried
+  carried_min_person_m: 0.8      # person must have travelled at least this far
+  # --- Exclusions / suppression ---
+  pickup_suppress_s: 6.0        # litter track dies near person => pickup, no event
+  # --- Departure gate: a dropped item is left BEHIND -------------------------
+  require_departure: true       # the dropper must MOVE AWAY from the object;
+                                # without this a carried bag that momentarily
+                                # separates from the person reads as littering
+  departure_m: 0.6              # min distance growth (m) after the drop
+  departure_window_s: 60.0      # 60s window ≈ "measure until fire time" (a slow
+                                # walk-away is still a walk-away); the FP case has
+                                # the person standing on the item (~0.3m)
+  event_cooldown_s: 90.0        # same-spot duplicate protection
+  event_cooldown_radius_m: 2.0
+  bootstrap_s: 0.4              # objects already present in the FIRST frames are
+                                # pre-existing (never alert); a dump at t=2s is NEW.
+                                # Use 12-30 for live streams (scene settles), 0.4 for clips
+  bin_zones: []                 # per-camera polygons [[x,y],...] in source pixels
+
+held_release:                   # hand-drop chain (highest confidence events)
+  enable: true
+  hold_arm_s: 1.2               # litter box inside person bbox this long => armed
+  arm_iou_min: 0.05
+
+pose_gesture:                   # Route A: release-gesture detection from pose
+  enable: true
+  model: "models/yolo11n-pose.pt"
+  pose_fps: 2.5                 # pose is cheaper than it looks, but not free
+  arm_radius_frac: 0.30         # litter detection within this * person height
+                                # of the wrist => ARMED
+  raise_thresh: 0.10            # (shoulder_y - wrist_y)/height above this = arm up
+  drop_thresh: -0.15            # below this = arm down  => RELEASE
+  release_window_s: 1.5         # raise->drop must happen within this
+  ground_offset_frac: 0.35      # landing point = wrist + this * height (down)
+  ground_radius_m: 1.5          # a NEW detection within this of the point counts
+  confirm_window_s: 2.5         # detection must appear within this of the gesture
+  min_votes_with_gesture: 2     # gesture counts as ONE corroborating vote
+
+vehicle_eject:                  # litter spat from vehicle
+  enable: true
+  vehicle_classes: [1, 2, 3, 5, 7]   # bicycle,car,motorcycle,bus,truck (COCO)
+  radius_m: 4.0
+  max_area_px: 30000          # only SMALL objects can be a vehicle toss
+
+evidence:
+  out_dir: "runs"
+  pre_event_s: 10.0
+  post_event_s: 8.0
+  save_annotated_video: true
+  jpeg_quality: 92
+
+runtime:
+  device: auto                  # auto | cpu | cuda  (auto = cuda if available)
+  torch_threads: 4              # low-concurrency default (PC heat); raise when idle
+  show_window: false            # true => live annotated preview (needs desktop)
+  log_level: INFO

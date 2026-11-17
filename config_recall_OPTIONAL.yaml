@@ -1,0 +1,145 @@
+source:
+  input: media/litter1.mp4
+  proc_fps: 5
+  litter_fps: 2.5
+  extra_fps: 1.0
+  resize_max: 960
+models:
+  person: models/yolo11n.pt
+  person_tracker_yaml: models/bytetrack_lg.yaml
+  person_conf: 0.2
+  pose: models/yolo11n-pose.pt
+  litter_a: models/litter-detection-yolov8/best.pt
+  litter_b: models/yolov8s-worldv2.pt
+  grounding_dino: IDEA-Research/grounding-dino-base
+  gd_enable: false
+  world_vocab:
+  - litter
+  - trash
+  - garbage bag
+  - plastic bottle
+  - bottle
+  - can
+  - cup
+  - cardboard box
+  - food wrapper
+  - plastic bag
+  - trash bag
+  - styrofoam container
+  - discarded clothes
+  - trash on the ground
+  - backpack
+  - handbag
+  - suitcase
+  - umbrella
+  - purse
+  - paper bag
+  - shopping bag
+  - briefcase
+  - laptop bag
+  gd_prompt: litter . trash . garbage bag . plastic bag . trash bag . rubbish .
+  gd_box_threshold: 0.25
+  gd_text_threshold: 0.24
+  gd_interval_s: 10.0
+  gd_vote_ttl_s: 45.0
+  world_conf: 0.16
+  litter_a_conf: 0.2
+  personal_vocab:
+  - backpack
+  - handbag
+  - suitcase
+  - umbrella
+  - purse
+  - paper bag
+  - shopping bag
+  - briefcase
+  - laptop bag
+  extra_detectors:
+  - models/extra/waste-detection-yolov8/best.pt
+  - models/extra/yolov8s-garbage-detection/best_yolov8s_final.pt
+  world_conf_zoom: 0.1
+person_tracker:
+  track_buffer: 50
+  match_thresh: 0.85
+logic:
+  stationary_min_age_s: 4.0
+  stationary_window: 15
+  stationary_sigma_px: 20.0
+  fast_chain_age_s: 3.0
+  flush_min_age_s: 2.0
+  min_litter_area_px: 120
+  max_litter_area_frac: 0.35
+  person_containment_max_iou: 0.45
+  held_area_frac: 0.35
+  proximity_radius_m: 3.0
+  alert_proximity_m: 1.0
+  lookback_s: 4.0
+  lookahead_s: 1.0
+  person_height_m: 1.7
+  require_votes: 2
+  strong_area_px: 60000
+  single_vote_area_px: 8000
+  single_vote_proximity_m: 0.5
+  small_zoom_area_px: 5000
+  blob_ratio_min: 0.12
+  require_bg_blob: true
+  blob_require_votes: 2
+  bg_min_frames: 25
+  fire_unattributed: true
+  attended_radius_m: 1.5
+  departure_with_m: 1.5
+  require_item_motion_test: true
+  carried_motion_ratio: 0.5
+  carried_min_person_m: 0.8
+  pickup_suppress_s: 6.0
+  require_departure: true
+  departure_m: 0.6
+  departure_window_s: 60.0
+  event_cooldown_s: 90.0
+  event_cooldown_radius_m: 2.0
+  bootstrap_s: 0.4
+  bin_zones: []
+held_release:
+  enable: true
+  hold_arm_s: 1.2
+  arm_iou_min: 0.05
+pose_gesture:
+  model: models/yolo11n-pose.pt
+  pose_fps: 2.5
+  arm_radius_frac: 0.3
+  raise_thresh: 0.1
+  drop_thresh: -0.15
+  release_window_s: 1.5
+  ground_offset_frac: 0.35
+  ground_radius_m: 1.5
+  confirm_window_s: 2.5
+  min_votes_with_gesture: 2
+small_litter:
+  zoom_enable: true
+  crop_px: 320
+  upscale: 2.0
+  min_conf: 0.1
+  tiles: 0
+  tile_overlap: 0.2
+  tile_fps: 0.5
+vehicle_eject:
+  enable: true
+  vehicle_classes:
+  - 1
+  - 2
+  - 3
+  - 5
+  - 7
+  radius_m: 4.0
+  max_area_px: 30000
+evidence:
+  out_dir: runs
+  pre_event_s: 10.0
+  post_event_s: 8.0
+  save_annotated_video: true
+  jpeg_quality: 92
+runtime:
+  device: auto
+  torch_threads: 4
+  show_window: false
+  log_level: INFO

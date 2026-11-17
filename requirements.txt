@@ -1,0 +1,12 @@
+torch>=2.0
+torchvision>=0.15
+ultralytics>=8.3
+supervision>=0.31
+opencv-python>=4.9
+transformers>=4.44
+huggingface_hub>=0.24
+pyyaml>=6.0
+pillow>=10.0
+kaggle>=2.2
+# optional: SAHI-style small-object helpers
+# sahi>=0.11

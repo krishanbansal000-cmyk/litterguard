@@ -1,0 +1,15 @@
+{
+  "id": "krishanbansal/litterguard-gpu-eval",
+  "title": "litterguard-gpu-eval",
+  "code_file": "litterguard-gpu-eval.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "accelerator": "nvidiaTeslaP100",
+  "enable_internet": true,
+  "dataset_sources": ["krishanbansal/litterguard-eval"],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}

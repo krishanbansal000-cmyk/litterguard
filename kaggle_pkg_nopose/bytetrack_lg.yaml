@@ -1,0 +1,9 @@
+# ByteTrack config tuned for LitterGuard: accept low-confidence person tracks
+# (privacy-blurred CCTV people fluctuate ~0.2-0.6 frame to frame)
+tracker_type: bytetrack
+track_high_thresh: 0.2
+track_low_thresh: 0.1
+new_track_thresh: 0.2
+track_buffer: 50
+match_thresh: 0.85
+fuse_score: true

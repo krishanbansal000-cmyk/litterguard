@@ -1,0 +1,9 @@
+{
+  "grounding_dino": {
+    "frames_sampled": 0,
+    "detections_total": 0,
+    "avg_s_per_frame": null,
+    "fps": null,
+    "agreement_with_yolo_world": 0
+  }
+}
